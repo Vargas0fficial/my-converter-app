@@ -1,13 +1,18 @@
 import os
+import platform
 from PIL import Image
 from pdf2image import convert_from_path
 from pypdf import PdfWriter  # Import para sa merging
 
 class DocumentConverter:
     def __init__(self):
-        # Dito natin ilalagay ang path ng Poppler bin folder mo
-        # Halimbawa: r'C:\poppler\Library\bin'
-        self.poppler_path = r'C:\poppler-26.02.0\Library\bin' 
+        # I-check kung Windows o Linux ang environment
+        if platform.system() == "Windows":
+            # Path para sa local development mo sa Windows
+            self.poppler_path = r'C:\poppler-26.02.0\Library\bin'
+        else:
+            # Sa Render/Linux, hindi kailangan ng path dahil installed ito sa system via Docker
+            self.poppler_path = None 
 
     def pdf_to_images(self, pdf_path, output_folder, dpi=300):
         """
@@ -20,7 +25,7 @@ class DocumentConverter:
 
             print(f"Sinisimulan ang conversion ng: {pdf_path}")
             
-            # Ang convert_from_path ang gumagamit sa Poppler
+            # Gagamitin ang self.poppler_path (na nagiging None kapag nasa Linux/Render)
             images = convert_from_path(
                 pdf_path, 
                 dpi=dpi, 
