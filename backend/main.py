@@ -101,32 +101,31 @@ async def images_to_pdf_api(files: list[UploadFile] = File(...), merge: bool = F
             raise HTTPException(status_code=400, detail="No valid image files found")
 
         if merge:
-            # ✅ FIX: Save to file PATH first, not file handle
             output_pdf = os.path.join(task_dir, "merged_images.pdf")
             
             print(f"[IMG2PDF] Merging {len(processed_images)} images to PDF...")
             
-            # ✅ OPTIMIZED: Lower resolution and quality for smaller file size
+            # ✅ FIX: Remove invalid 'optimize' parameter
+            # PIL Image.save() for PDF doesn't support 'optimize' parameter
             processed_images[0].save(
                 output_pdf,
                 "PDF", 
                 save_all=True, 
                 append_images=processed_images[1:] if len(processed_images) > 1 else [],
-                resolution=72.0,  # ✅ Reduced from 100
-                quality=75,       # ✅ Reduced from 95
-                optimize=True     # ✅ Added compression
+                resolution=72.0,
+                quality=75
             )
             
-            # Step 2: Close all images immediately
+            # Close all images immediately
             for img in processed_images:
                 img.close()
             
             print(f"[IMG2PDF] Saved to temp: {output_pdf}")
             
-            # Step 3: Wait a bit for file system
-            time.sleep(0.3)
+            # Wait for file system
+            time.sleep(0.5)
             
-            # Step 4: Verify file exists and has content
+            # Verify file exists and has content
             if not os.path.exists(output_pdf):
                 raise HTTPException(status_code=500, detail="PDF creation failed")
             
@@ -136,12 +135,15 @@ async def images_to_pdf_api(files: list[UploadFile] = File(...), merge: bool = F
             
             print(f"[IMG2PDF] ✅ PDF created: {file_size} bytes ({file_size/1024/1024:.2f} MB)")
             
-            # Step 5: Return the file
+            # Return the file
             return FileResponse(
                 Path(output_pdf), 
                 media_type='application/pdf',
-                filename="combined_images.pdf",
-                headers={"Content-Disposition": "attachment; filename=combined_images.pdf"}
+                filename="merged_images.pdf",
+                headers={
+                    "Content-Disposition": "attachment; filename=merged_images.pdf",
+                    "Cache-Control": "no-cache, no-store, must-revalidate"
+                }
             )
         else:
             # Individual PDFs
@@ -149,7 +151,8 @@ async def images_to_pdf_api(files: list[UploadFile] = File(...), merge: bool = F
             os.makedirs(pdf_output_folder)
             for i, img in enumerate(processed_images):
                 pdf_path = os.path.join(pdf_output_folder, f"file_{i+1}.pdf")
-                img.save(pdf_path, "PDF", resolution=72.0, quality=75, optimize=True)
+                # ✅ FIX: Removed 'optimize' parameter
+                img.save(pdf_path, "PDF", resolution=72.0, quality=75)
                 img.close()
             
             zip_path = os.path.join(task_dir, "converted_pdfs")
@@ -184,7 +187,7 @@ async def merge_pdfs_api(files: list[UploadFile] = File(...)):
         all_images = []
         pdf_paths = []
         
-        # ✅ Step 1: Save and collect all PDFs
+        # Step 1: Save and collect all PDFs
         for file in files:
             if not file.content_type == 'application/pdf':
                 print(f"[MERGE] Warning: {file.filename} is not PDF")
@@ -200,13 +203,13 @@ async def merge_pdfs_api(files: list[UploadFile] = File(...)):
         
         print(f"[MERGE] Converting {len(pdf_paths)} PDFs to images...")
         
-        # ✅ Step 2: Convert each PDF to images (lower DPI for smaller file)
+        # Step 2: Convert each PDF to images
         for pdf_path in pdf_paths:
             print(f"[MERGE] Converting: {pdf_path}")
             try:
                 images = convert_from_path(
                     pdf_path, 
-                    dpi=150,  # ✅ Reduced from 300
+                    dpi=150,
                     poppler_path=converter.poppler_path
                 )
                 
@@ -222,27 +225,28 @@ async def merge_pdfs_api(files: list[UploadFile] = File(...)):
         if not all_images:
             raise HTTPException(status_code=400, detail="Failed to convert any PDFs")
         
-        # ✅ Step 3: Merge all images into single PDF with compression
+        # Step 3: Merge all images into single PDF
         output_pdf_path = os.path.join(task_dir, "merged_result.pdf")
         
         print(f"[MERGE] Creating PDF from {len(all_images)} images...")
+        
+        # ✅ FIX: Removed 'optimize' parameter
         all_images[0].save(
             output_pdf_path,
             "PDF",
             save_all=True,
             append_images=all_images[1:] if len(all_images) > 1 else [],
-            resolution=72.0,  # ✅ Reduced
-            quality=75,       # ✅ Reduced
-            optimize=True     # ✅ Added compression
+            resolution=72.0,
+            quality=75
         )
         
         # Close all images
         for img in all_images:
             img.close()
         
-        time.sleep(0.3)
+        time.sleep(0.5)
         
-        # ✅ Step 4: Verify file
+        # Verify file
         if not os.path.exists(output_pdf_path):
             raise HTTPException(status_code=500, detail="PDF creation failed")
         
@@ -252,12 +256,15 @@ async def merge_pdfs_api(files: list[UploadFile] = File(...)):
         
         print(f"[MERGE] ✅ Success! {file_size} bytes ({file_size/1024/1024:.2f} MB)")
         
-        # ✅ Step 5: Return file
+        # Return file
         return FileResponse(
             Path(output_pdf_path), 
             media_type='application/pdf',
             filename="merged_document.pdf",
-            headers={"Content-Disposition": "attachment; filename=merged_document.pdf"}
+            headers={
+                "Content-Disposition": "attachment; filename=merged_document.pdf",
+                "Cache-Control": "no-cache, no-store, must-revalidate"
+            }
         )
             
     except HTTPException:
