@@ -94,11 +94,16 @@ export default function Home() {
     if (isPDF) {
       endpoint = isMergeMode ? 'merge-pdfs' : 'pdf-to-images'
     } else {
-      // images-to-pdf covers both single and merged cases usually
+      // images-to-pdf covers both single and merged cases
       endpoint = 'images-to-pdf'
     }
     
     selectedFiles.forEach(file => formData.append('files', file))
+
+    // ✅ FIX: Add merge parameter for images-to-pdf endpoint
+    if (endpoint === 'images-to-pdf') {
+      formData.append('merge', isMergeMode.toString())
+    }
 
     try {
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';

@@ -2,7 +2,7 @@ import os
 import platform
 from PIL import Image
 from pdf2image import convert_from_path
-from pypdf import PdfWriter  # Import para sa merging
+from PyPDF2 import PdfMerger  # ✅ Using PyPDF2 (more stable)
 
 class DocumentConverter:
     def __init__(self):
@@ -75,12 +75,14 @@ class DocumentConverter:
                 image_objects.append(rgb_img)
 
             if image_objects:
-                # I-save ang unang image at i-append ang mga susunod
-                image_objects[0].save(
-                    output_pdf_path, 
-                    save_all=True, 
-                    append_images=image_objects[1:]
-                )
+                # FIX: Gumamit ng 'with open' para siguradong selyado ang file bago ito basahin ng API
+                with open(output_pdf_path, "wb") as f:
+                    image_objects[0].save(
+                        f, 
+                        format="PDF",
+                        save_all=True, 
+                        append_images=image_objects[1:]
+                    )
                 print(f"PDF Successfully created: {output_pdf_path}")
                 return True
                 
@@ -88,28 +90,35 @@ class DocumentConverter:
             print(f"Error sa Image to PDF conversion: {e}")
             return False
 
-    # --- BAGONG FUNCTION PARA SA MERGING ---
     def merge_pdfs(self, pdf_paths, output_path):
         """
         Pagsasama-samahin ang listahan ng PDF paths tungo sa iisang file.
+        ✅ Using PyPDF2 (more stable for merging)
         """
         try:
-            merger = PdfWriter()
+            # ✅ Use PdfMerger from PyPDF2
+            merger = PdfMerger()
             
             for pdf in pdf_paths:
                 print(f"Merging: {pdf}")
                 merger.append(pdf)
             
-            merger.write(output_path)
+            # ✅ Write sa file gamit ang 'with' statement
+            with open(output_path, "wb") as f:
+                merger.write(f)
+            
+            # ✅ CRITICAL: Close the merger to free resources
             merger.close()
+            
             print(f"Successfully merged into: {output_path}")
             return True
+            
         except Exception as e:
             print(f"Error sa PDF merging: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
 # Para sa testing (Standalone)
 if __name__ == "__main__":
     conv = DocumentConverter()
-    # Pwede mo itong i-uncomment para i-test nang direkta sa terminal:
-    # conv.pdf_to_images('test.pdf', 'output_images')
