@@ -43,6 +43,6 @@ next-env.d.ts
 # Para sa Python backend
 backend/venv/
 backend/__pycache__/
-backend/temp_uploads/*
+backend/temp_uploads/
 backend/*.pdf
 backend/*.png

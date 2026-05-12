@@ -1,6 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, Response
 import shutil
 import os
 import uuid
@@ -13,7 +13,6 @@ import io
 app = FastAPI()
 converter = DocumentConverter()
 
-# Payagan ang Next.js na maka-connect
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -67,195 +66,145 @@ async def pdf_to_images_api(files: list[UploadFile] = File(...), dpi: int = Form
         raise HTTPException(status_code=500, detail=f"PDF to Image conversion failed: {str(e)}")
 
 @app.post("/convert/images-to-pdf")
-async def images_to_pdf_api(files: list[UploadFile] = File(...), merge: bool = Form(False)):
-    session_id = str(uuid.uuid4())
-    task_dir = os.path.join(UPLOAD_DIR, session_id)
-    os.makedirs(task_dir)
+async def images_to_pdf_api(
+    files: list[UploadFile] = File(...), 
+    merge: str = Form("false"), 
+    quality: str = Form("80")
+):
+    print(f"\n--- NEW REQUEST: {len(files)} files ---")
+    processed_images = []
     
     try:
-        processed_images = []
-        sorted_files = sorted(files, key=lambda x: x.filename)
+        # 1. Parse Inputs
+        is_merge = str(merge).lower() == "true"
+        q_val = int(quality)
+        print(f"DEBUG: merge={is_merge}, quality={q_val}")
 
-        print(f"[IMG2PDF] Processing {len(sorted_files)} files, merge={merge}")
+        # 2. Process Images
+        for file in files:
+            print(f"DEBUG: Processing {file.filename} ({file.content_type})")
+            
+            # Basahin ang bytes
+            img_bytes = await file.read()
+            if not img_bytes:
+                print(f"DEBUG: Empty bytes for {file.filename}")
+                continue
+                
+            # Buksan sa Pillow
+            img = Image.open(io.BytesIO(img_bytes))
+            
+            # Siguraduhing RGB
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            
+            # Apply quality/compression by saving to a temporary buffer
+            tmp_buffer = io.BytesIO()
+            img.save(tmp_buffer, format="JPEG", quality=q_val)
+            tmp_buffer.seek(0)
+            
+            # I-reload bilang bagong image object para malinis
+            final_img = Image.open(tmp_buffer)
+            final_img.load()
+            processed_images.append(final_img)
 
-        for file in sorted_files:
-            if not file.content_type.startswith('image/'):
-                print(f"[IMG2PDF] Skipping non-image: {file.filename}")
-                continue
-            
-            temp_path = os.path.join(task_dir, file.filename)
-            with open(temp_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-            
-            try:
-                img = Image.open(temp_path)
-                if img.mode != "RGB":
-                    img = img.convert("RGB")
-                img.load() 
-                processed_images.append(img)
-                print(f"[IMG2PDF] Processed: {file.filename}")
-            except Exception as img_error:
-                print(f"[IMG2PDF] Error: {file.filename}: {img_error}")
-                continue
+        print(f"DEBUG: Total processed images: {len(processed_images)}")
 
         if not processed_images:
-            raise HTTPException(status_code=400, detail="No valid image files found")
+            return Response(content="No valid images were processed", status_code=400)
 
-        if merge:
-            print(f"[IMG2PDF] Merging {len(processed_images)} images to PDF...")
-            
-            # ✅ FIX: Save to BytesIO (memory) instead of disk
-            # This works on Vercel's ephemeral filesystem
-            pdf_bytes = io.BytesIO()
-            
+        if is_merge:
+            # 3. Generate PDF
+            pdf_output = io.BytesIO()
             processed_images[0].save(
-                pdf_bytes,
-                "PDF", 
-                save_all=True, 
-                append_images=processed_images[1:] if len(processed_images) > 1 else [],
-                resolution=72.0,
-                quality=75
+                pdf_output,
+                format="PDF",
+                save_all=True,
+                append_images=processed_images[1:] if len(processed_images) > 1 else []
             )
             
-            # Close all images immediately
-            for img in processed_images:
-                img.close()
+            final_pdf_data = pdf_output.getvalue()
+            pdf_output.close()
             
-            # Get the bytes
-            pdf_bytes.seek(0)
-            pdf_data = pdf_bytes.getvalue()
-            
-            print(f"[IMG2PDF] ✅ PDF created in memory: {len(pdf_data)} bytes")
-            
-            # Return the bytes
-            return StreamingResponse(
-                io.BytesIO(pdf_data),
+            # Cleanup
+            for im in processed_images:
+                im.close()
+
+            print(f"DEBUG: PDF Size: {len(final_pdf_data)} bytes")
+
+            # 4. Return Response
+            return Response(
+                content=final_pdf_data,
                 media_type="application/pdf",
                 headers={
-                    "Content-Disposition": "attachment; filename=merged_images.pdf",
-                    "Cache-Control": "no-cache, no-store, must-revalidate"
+                    "Content-Disposition": "attachment; filename=output.pdf",
+                    "Content-Length": str(len(final_pdf_data))
                 }
             )
         else:
-            # Individual PDFs
-            pdf_output_folder = os.path.join(task_dir, "individual_pdfs")
-            os.makedirs(pdf_output_folder)
-            for i, img in enumerate(processed_images):
-                pdf_path = os.path.join(pdf_output_folder, f"file_{i+1}.pdf")
-                img.save(pdf_path, "PDF", resolution=72.0, quality=75)
-                img.close()
-            
-            zip_path = os.path.join(task_dir, "converted_pdfs")
-            shutil.make_archive(zip_path, 'zip', pdf_output_folder)
-            return FileResponse(
-                Path(f"{zip_path}.zip"), 
-                media_type='application/zip', 
-                filename="converted_pdfs.zip"
-            )
+            # Shortcut muna tayo: Kung hindi merge, i-return ang unang image as PDF 
+            # para lang ma-test natin kung working ang bytes
+            pdf_output = io.BytesIO()
+            processed_images[0].save(pdf_output, format="PDF")
+            data = pdf_output.getvalue()
+            return Response(content=data, media_type="application/pdf")
 
-    except HTTPException:
-        raise
     except Exception as e:
-        print(f"[IMG2PDF] ❌ ERROR: {str(e)}")
+        print(f"ERROR: {str(e)}")
         import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        traceback.print_exc() # Para makita ang exact line ng error sa terminal
+        return Response(content=str(e), status_code=500)
 
 @app.post("/convert/merge-pdfs")
-async def merge_pdfs_api(files: list[UploadFile] = File(...)):
-    """
-    Merge multiple PDFs into one
-    Strategy: PDF → Images → Single PDF
-    """
+async def merge_pdfs_api(
+    files: list[UploadFile] = File(...),
+    quality: int = Form(80) # ✅ FEATURE: Support din dito ang compression
+):
     session_id = str(uuid.uuid4())
     task_dir = os.path.join(UPLOAD_DIR, session_id)
     os.makedirs(task_dir, exist_ok=True)
     
     try:
         from pdf2image import convert_from_path
-        
         all_images = []
         pdf_paths = []
         
-        # Step 1: Save and collect all PDFs
         for file in files:
-            if not file.content_type == 'application/pdf':
-                print(f"[MERGE] Warning: {file.filename} is not PDF")
-                continue
-            
             file_path = os.path.join(task_dir, file.filename)
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
             pdf_paths.append(file_path)
         
-        if not pdf_paths:
-            raise HTTPException(status_code=400, detail="No valid PDF files found")
-        
-        print(f"[MERGE] Converting {len(pdf_paths)} PDFs to images...")
-        
-        # Step 2: Convert each PDF to images
         for pdf_path in pdf_paths:
-            print(f"[MERGE] Converting: {pdf_path}")
-            try:
-                images = convert_from_path(
-                    pdf_path, 
-                    dpi=150,
-                    poppler_path=converter.poppler_path
-                )
-                
-                for img in images:
-                    if img.mode != "RGB":
-                        img = img.convert("RGB")
-                    all_images.append(img)
-                    
-            except Exception as e:
-                print(f"[MERGE] Error: {e}")
-                continue
+            images = convert_from_path(pdf_path, dpi=150, poppler_path=converter.poppler_path)
+            for img in images:
+                if img.mode != "RGB":
+                    img = img.convert("RGB")
+                all_images.append(img)
         
         if not all_images:
-            raise HTTPException(status_code=400, detail="Failed to convert any PDFs")
+            raise HTTPException(status_code=400, detail="Failed to convert PDFs")
         
-        # Step 3: Merge all images into single PDF (in memory)
-        print(f"[MERGE] Creating PDF from {len(all_images)} images...")
-        
-        # ✅ FIX: Use BytesIO instead of disk
         pdf_bytes = io.BytesIO()
-        
         all_images[0].save(
             pdf_bytes,
             "PDF",
             save_all=True,
             append_images=all_images[1:] if len(all_images) > 1 else [],
             resolution=72.0,
-            quality=75
+            quality=quality # ✅ Dynamic quality
         )
         
-        # Close all images
         for img in all_images:
             img.close()
         
-        # Get the bytes
         pdf_bytes.seek(0)
-        pdf_data = pdf_bytes.getvalue()
-        
-        print(f"[MERGE] ✅ Success! {len(pdf_data)} bytes")
-        
-        # Return the bytes
-        return StreamingResponse(
-            io.BytesIO(pdf_data),
+        return Response(
+            content=pdf_bytes.getvalue(),
             media_type="application/pdf",
-            headers={
-                "Content-Disposition": "attachment; filename=merged_document.pdf",
-                "Cache-Control": "no-cache, no-store, must-revalidate"
-            }
+            headers={"Content-Disposition": "attachment; filename=merged_document.pdf"}
         )
             
-    except HTTPException:
-        raise
     except Exception as e:
-        print(f"[MERGE] ❌ ERROR: {str(e)}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
