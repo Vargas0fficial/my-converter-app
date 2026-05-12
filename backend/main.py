@@ -1,6 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 import shutil
 import os
 import uuid
@@ -8,6 +8,7 @@ from converter import DocumentConverter
 from PIL import Image
 from pathlib import Path
 import time
+import io
 
 app = FastAPI()
 converter = DocumentConverter()
@@ -101,14 +102,14 @@ async def images_to_pdf_api(files: list[UploadFile] = File(...), merge: bool = F
             raise HTTPException(status_code=400, detail="No valid image files found")
 
         if merge:
-            output_pdf = os.path.join(task_dir, "merged_images.pdf")
-            
             print(f"[IMG2PDF] Merging {len(processed_images)} images to PDF...")
             
-            # ✅ FIX: Remove invalid 'optimize' parameter
-            # PIL Image.save() for PDF doesn't support 'optimize' parameter
+            # ✅ FIX: Save to BytesIO (memory) instead of disk
+            # This works on Vercel's ephemeral filesystem
+            pdf_bytes = io.BytesIO()
+            
             processed_images[0].save(
-                output_pdf,
+                pdf_bytes,
                 "PDF", 
                 save_all=True, 
                 append_images=processed_images[1:] if len(processed_images) > 1 else [],
@@ -120,26 +121,16 @@ async def images_to_pdf_api(files: list[UploadFile] = File(...), merge: bool = F
             for img in processed_images:
                 img.close()
             
-            print(f"[IMG2PDF] Saved to temp: {output_pdf}")
+            # Get the bytes
+            pdf_bytes.seek(0)
+            pdf_data = pdf_bytes.getvalue()
             
-            # Wait for file system
-            time.sleep(0.5)
+            print(f"[IMG2PDF] ✅ PDF created in memory: {len(pdf_data)} bytes")
             
-            # Verify file exists and has content
-            if not os.path.exists(output_pdf):
-                raise HTTPException(status_code=500, detail="PDF creation failed")
-            
-            file_size = os.path.getsize(output_pdf)
-            if file_size == 0:
-                raise HTTPException(status_code=500, detail="PDF is empty")
-            
-            print(f"[IMG2PDF] ✅ PDF created: {file_size} bytes ({file_size/1024/1024:.2f} MB)")
-            
-            # Return the file
-            return FileResponse(
-                Path(output_pdf), 
-                media_type='application/pdf',
-                filename="merged_images.pdf",
+            # Return the bytes
+            return StreamingResponse(
+                io.BytesIO(pdf_data),
+                media_type="application/pdf",
                 headers={
                     "Content-Disposition": "attachment; filename=merged_images.pdf",
                     "Cache-Control": "no-cache, no-store, must-revalidate"
@@ -151,7 +142,6 @@ async def images_to_pdf_api(files: list[UploadFile] = File(...), merge: bool = F
             os.makedirs(pdf_output_folder)
             for i, img in enumerate(processed_images):
                 pdf_path = os.path.join(pdf_output_folder, f"file_{i+1}.pdf")
-                # ✅ FIX: Removed 'optimize' parameter
                 img.save(pdf_path, "PDF", resolution=72.0, quality=75)
                 img.close()
             
@@ -225,14 +215,14 @@ async def merge_pdfs_api(files: list[UploadFile] = File(...)):
         if not all_images:
             raise HTTPException(status_code=400, detail="Failed to convert any PDFs")
         
-        # Step 3: Merge all images into single PDF
-        output_pdf_path = os.path.join(task_dir, "merged_result.pdf")
-        
+        # Step 3: Merge all images into single PDF (in memory)
         print(f"[MERGE] Creating PDF from {len(all_images)} images...")
         
-        # ✅ FIX: Removed 'optimize' parameter
+        # ✅ FIX: Use BytesIO instead of disk
+        pdf_bytes = io.BytesIO()
+        
         all_images[0].save(
-            output_pdf_path,
+            pdf_bytes,
             "PDF",
             save_all=True,
             append_images=all_images[1:] if len(all_images) > 1 else [],
@@ -244,23 +234,16 @@ async def merge_pdfs_api(files: list[UploadFile] = File(...)):
         for img in all_images:
             img.close()
         
-        time.sleep(0.5)
+        # Get the bytes
+        pdf_bytes.seek(0)
+        pdf_data = pdf_bytes.getvalue()
         
-        # Verify file
-        if not os.path.exists(output_pdf_path):
-            raise HTTPException(status_code=500, detail="PDF creation failed")
+        print(f"[MERGE] ✅ Success! {len(pdf_data)} bytes")
         
-        file_size = os.path.getsize(output_pdf_path)
-        if file_size == 0:
-            raise HTTPException(status_code=500, detail="PDF is empty")
-        
-        print(f"[MERGE] ✅ Success! {file_size} bytes ({file_size/1024/1024:.2f} MB)")
-        
-        # Return file
-        return FileResponse(
-            Path(output_pdf_path), 
-            media_type='application/pdf',
-            filename="merged_document.pdf",
+        # Return the bytes
+        return StreamingResponse(
+            io.BytesIO(pdf_data),
+            media_type="application/pdf",
             headers={
                 "Content-Disposition": "attachment; filename=merged_document.pdf",
                 "Cache-Control": "no-cache, no-store, must-revalidate"
