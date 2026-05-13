@@ -71,88 +71,94 @@ async def images_to_pdf_api(
     merge: str = Form("false"), 
     quality: str = Form("80")
 ):
-    print(f"\n--- NEW REQUEST: {len(files)} files ---")
+    is_merge = str(merge).lower() == "true"
+    quality_int = int(quality)
     processed_images = []
-    
-    try:
-        # 1. Parse Inputs
-        is_merge = str(merge).lower() == "true"
-        q_val = int(quality)
-        print(f"DEBUG: merge={is_merge}, quality={q_val}")
 
-        # 2. Process Images
-        for file in files:
-            print(f"DEBUG: Processing {file.filename} ({file.content_type})")
-            
-            # Basahin ang bytes
-            img_bytes = await file.read()
-            if not img_bytes:
-                print(f"DEBUG: Empty bytes for {file.filename}")
+    try:
+        # 1. Siguraduhin na ang files ay naka-sort para hindi mag-error ang sequence
+        sorted_files = sorted(files, key=lambda x: x.filename)
+
+        for file in sorted_files:
+            # Basahin ang file content nang buo bago ipasa sa Image.open
+            file_content = await file.read()
+            if not file_content:
                 continue
-                
-            # Buksan sa Pillow
-            img = Image.open(io.BytesIO(img_bytes))
             
-            # Siguraduhing RGB
+            img = Image.open(io.BytesIO(file_content))
+            
+            # Napakahalaga: Convert to RGB para sa PDF compatibility
             if img.mode != "RGB":
                 img = img.convert("RGB")
             
-            # Apply quality/compression by saving to a temporary buffer
-            tmp_buffer = io.BytesIO()
-            img.save(tmp_buffer, format="JPEG", quality=q_val)
-            tmp_buffer.seek(0)
+            # I-compress ang bawat image bago i-store sa list
+            img_io = io.BytesIO()
+            img.save(img_io, format="JPEG", quality=quality_int, optimize=True)
+            img_io.seek(0)
             
-            # I-reload bilang bagong image object para malinis
-            final_img = Image.open(tmp_buffer)
-            final_img.load()
-            processed_images.append(final_img)
-
-        print(f"DEBUG: Total processed images: {len(processed_images)}")
+            processed_images.append(Image.open(img_io))
 
         if not processed_images:
-            return Response(content="No valid images were processed", status_code=400)
+            raise HTTPException(status_code=400, detail="no valid images uploaded")
 
+        # 2. PDF MERGE LOGIC (Dito madalas mag-corrupt kung marami)
+        output_buffer = io.BytesIO()
+        
         if is_merge:
-            # 3. Generate PDF
-            pdf_output = io.BytesIO()
+            # I-save ang lahat sa isang buffer
             processed_images[0].save(
-                pdf_output,
+                output_buffer,
                 format="PDF",
                 save_all=True,
-                append_images=processed_images[1:] if len(processed_images) > 1 else []
+                append_images=processed_images[1:] if len(processed_images) > 1 else [],
+                resolution=100.0
             )
-            
-            final_pdf_data = pdf_output.getvalue()
-            pdf_output.close()
-            
-            # Cleanup
-            for im in processed_images:
-                im.close()
-
-            print(f"DEBUG: PDF Size: {len(final_pdf_data)} bytes")
-
-            # 4. Return Response
-            return Response(
-                content=final_pdf_data,
-                media_type="application/pdf",
-                headers={
-                    "Content-Disposition": "attachment; filename=output.pdf",
-                    "Content-Length": str(len(final_pdf_data))
-                }
-            )
+            filename = "merged_files.pdf"
+            content_type = "application/pdf"
         else:
-            # Shortcut muna tayo: Kung hindi merge, i-return ang unang image as PDF 
-            # para lang ma-test natin kung working ang bytes
-            pdf_output = io.BytesIO()
-            processed_images[0].save(pdf_output, format="PDF")
-            data = pdf_output.getvalue()
-            return Response(content=data, media_type="application/pdf")
+            # Dito naman ang logic kung Individual PDFs (i-zip natin)
+            # Gumamit ng temp directory para hindi mag-crash ang memory
+            import tempfile
+            import zipfile
+            
+            with tempfile.TemporaryDirectory() as tmpdir:
+                zip_path = os.path.join(tmpdir, "converted.zip")
+                with zipfile.ZipFile(zip_path, 'w') as zipf:
+                    for i, img in enumerate(processed_images):
+                        pdf_path = os.path.join(tmpdir, f"file_{i+1}.pdf")
+                        img.save(pdf_path, "PDF")
+                        zipf.write(pdf_path, arcname=f"image_to_pdf_{i+1}.pdf")
+                
+                with open(zip_path, "rb") as f:
+                    output_buffer.write(f.read())
+            
+            filename = "converted_files.zip"
+            content_type = "application/zip"
+
+        # 3. SIGURADUHING NASA ZERO ANG SEEK NG BUFFER
+        pdf_data = output_buffer.getvalue()
+        output_buffer.close()
+
+        if not pdf_data:
+            raise Exception("no data generated")
+
+        return Response(
+            content=pdf_data,
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+                "Content-Length": str(len(pdf_data)),
+                "Access-Control-Expose-Headers": "Content-Disposition"
+            }
+        )
 
     except Exception as e:
-        print(f"ERROR: {str(e)}")
-        import traceback
-        traceback.print_exc() # Para makita ang exact line ng error sa terminal
+        print(f"❌ ERROR: {str(e)}")
         return Response(content=str(e), status_code=500)
+    finally:
+        # Linisin ang lahat ng images sa memory
+        for im in processed_images:
+            im.close()
 
 @app.post("/convert/merge-pdfs")
 async def merge_pdfs_api(
