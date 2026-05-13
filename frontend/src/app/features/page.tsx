@@ -1,7 +1,8 @@
 'use client'
-import Link from 'next/link'
 import { motion } from 'framer-motion'
+import Link from 'next/link'
 import type { Variants } from 'framer-motion'
+import Header from '@/components/Header'
 import Footer from '@/components/Footer'
 
 export default function Features() {
@@ -38,7 +39,6 @@ export default function Features() {
     }
   ]
 
-  // ✅ Fixed: Properly typed Framer Motion variants
   const containerVariants: Variants = {
     hidden: { opacity: 0 },
     visible: {
@@ -65,30 +65,8 @@ export default function Features() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 flex flex-col">
-      {/* Header */}
-      <header className="sticky top-0 bg-white/80 backdrop-blur-md border-b border-gray-100 z-50 shadow-sm">
-        <nav className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.1 }}
-          >
-            <Link href="/" className="text-2xl font-bold bg-gradient-to-r from-[#002a5c] to-blue-600 bg-clip-text text-transparent">ImagePDF</Link>
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2 }}
-            className="flex gap-6 items-center"
-          >
-            <Link href="/" className="text-gray-600 hover:text-[#002a5c] transition duration-300">Home</Link>
-            <Link href="/features" className="text-[#002a5c] font-semibold">
-              Features
-            </Link>
-            <Link href="/contact" className="text-gray-600 hover:text-[#002a5c] transition duration-300">Contact</Link>
-          </motion.div>
-        </nav>
-      </header>
+      {/* ✅ Using Reusable Header */}
+      <Header currentPage="features" />
 
       <main className="flex-grow max-w-6xl mx-auto px-4 py-16 w-full">
         {/* Hero Section */}
@@ -134,15 +112,16 @@ export default function Features() {
               }}
               className="bg-white rounded-2xl p-8 border border-gray-100 hover:border-blue-200 transition-all duration-300 cursor-pointer"
             >
+              {/* ✅ Centered Icon */}
               <motion.div
-                className="text-5xl mb-4 inline-block"
+                className="text-5xl mb-4 flex justify-center"
                 whileHover={{ scale: 1.2, rotate: 10 }}
                 transition={{ type: "spring", stiffness: 300, damping: 10 }}
               >
                 {feature.icon}
               </motion.div>
-              <h3 className="text-xl font-bold mb-2 text-[#1a1a1a]">{feature.title}</h3>
-              <p className="text-gray-600 leading-relaxed">{feature.description}</p>
+              <h3 className="text-xl font-bold mb-2 text-[#1a1a1a] text-center">{feature.title}</h3>
+              <p className="text-gray-600 leading-relaxed text-center">{feature.description}</p>
             </motion.div>
           ))}
         </motion.div>

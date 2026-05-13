@@ -1,22 +1,14 @@
 'use client'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
+import Header from '@/components/Header'
 import Footer from '@/components/Footer'
 
 export default function Disclaimer() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex flex-col">
-      {/* Header */}
-      <header className="sticky top-0 bg-white border-b border-gray-200 z-50">
-        <nav className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-          <Link href="/" className="text-2xl font-bold text-[#002a5c]">ImagePDF</Link>
-          <div className="flex gap-6 items-center">
-            <Link href="/" className="text-gray-600 hover:text-[#002a5c] transition">Home</Link>
-            <Link href="/features" className="text-gray-600 hover:text-[#002a5c] transition">Features</Link>
-            <Link href="/contact" className="text-gray-600 hover:text-[#002a5c] transition">Contact</Link>
-          </div>
-        </nav>
-      </header>
+      {/* ✅ Using Reusable Header */}
+      <Header currentPage="disclaimer" />
 
       <main className="flex-grow max-w-4xl mx-auto px-4 py-16 w-full">
         <motion.div

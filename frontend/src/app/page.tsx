@@ -342,8 +342,8 @@ export default function Home() {
               <h4 className="text-sm font-bold uppercase mb-3 text-gray-300">Support</h4>
               <ul className="space-y-2 text-sm">
                 <li><a href="mailto:support@imagepdf.com" className="text-gray-400 hover:text-white transition">Email Support</a></li>
-                <li><a href="#faq" className="text-gray-400 hover:text-white transition">FAQ</a></li>
-                <li><a href="#feedback" className="text-gray-400 hover:text-white transition">Send Feedback</a></li>
+                <li><Link href="/faq" className="text-gray-400 hover:text-white transition">FAQ</Link></li>
+                <li><Link href="/feedback" className="text-gray-400 hover:text-white transition">Send Feedback</Link></li>
               </ul>
             </div>
           </div>
