@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
+import type { Variants } from 'framer-motion'
 import Footer from '@/components/Footer'
 
 export default function Features() {
@@ -37,7 +38,8 @@ export default function Features() {
     }
   ]
 
-  const containerVariants = {
+  // ✅ Fixed: Properly typed Framer Motion variants
+  const containerVariants: Variants = {
     hidden: { opacity: 0 },
     visible: {
       opacity: 1,
@@ -48,7 +50,7 @@ export default function Features() {
     },
   }
 
-  const itemVariants = {
+  const itemVariants: Variants = {
     hidden: { opacity: 0, y: 20 },
     visible: {
       opacity: 1,
@@ -57,7 +59,7 @@ export default function Features() {
         type: "spring",
         stiffness: 100,
         damping: 12,
-      },
+      } as any,
     },
   }
 
@@ -80,12 +82,8 @@ export default function Features() {
             className="flex gap-6 items-center"
           >
             <Link href="/" className="text-gray-600 hover:text-[#002a5c] transition duration-300">Home</Link>
-            <Link href="/features" className="text-[#002a5c] font-semibold relative">
+            <Link href="/features" className="text-[#002a5c] font-semibold">
               Features
-              <motion.div
-                layoutId="underline"
-                className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-[#002a5c] to-blue-600"
-              />
             </Link>
             <Link href="/contact" className="text-gray-600 hover:text-[#002a5c] transition duration-300">Contact</Link>
           </motion.div>
@@ -133,9 +131,8 @@ export default function Features() {
               whileHover={{
                 y: -8,
                 boxShadow: "0 20px 40px rgba(0, 42, 92, 0.15)",
-                transition: { duration: 0.3 }
               }}
-              className="bg-white rounded-2xl p-8 border border-gray-100 hover:border-blue-200 transition-all duration-300"
+              className="bg-white rounded-2xl p-8 border border-gray-100 hover:border-blue-200 transition-all duration-300 cursor-pointer"
             >
               <motion.div
                 className="text-5xl mb-4 inline-block"
@@ -158,9 +155,6 @@ export default function Features() {
           viewport={{ once: true }}
           className="relative overflow-hidden rounded-3xl"
         >
-          {/* Animated Background Gradient */}
-          <div className="absolute inset-0 bg-gradient-to-r from-[#002a5c] via-blue-600 to-[#002a5c] animate-pulse opacity-50" />
-          
           {/* Static Gradient */}
           <div className="absolute inset-0 bg-gradient-to-r from-[#002a5c] to-blue-600" />
 
