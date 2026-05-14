@@ -109,7 +109,7 @@ export default function Home() {
           {/* Header */}
           <div className="text-center mb-8">
             <h1 className="text-3xl sm:text-4xl font-bold text-[#1a1a1a] mb-2">Convert & Merge Files</h1>
-            <p className="text-sm text-gray-600">Easily convert images to PDF and merge documents. Free!</p>
+            <p className="text-sm text-gray-600">Easily convert images to PDF and merge documents. ads Free!</p>
           </div>
 
           {/* Error & Success Alerts */}
